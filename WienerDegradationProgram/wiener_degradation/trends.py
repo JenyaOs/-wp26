@@ -53,15 +53,15 @@ class LinearWithCovariateTrend(Trend):
     """Линейный тренд с ковариатами: ρ(t) = t * exp(-β·c)"""
     name = "linear_covariate"
     def func(self, x, t, c=0):
-        return t * np.exp(-x[2] * c)
+        return t / np.exp(x[2] * c)
 
-    def invFunc(self, x, z0, c=0):  return z0 / np.exp(-x[2] * c)
+    def invFunc(self, x, z0, c=0):  return z0 * np.exp(x[2] * c) / x[1]
 
     def d_func_beta(self, t, x, c=0):
-        return -c * t * np.exp(-x[2] * c)
+        return -c * t / np.exp(x[2] * c)
 
     def d2_func_beta(self, t, x, c=0):
-        return (c ** 2) * t * np.exp(-x[2] * c)
+        return (c ** 2) * t / np.exp(x[2] * c)
 
 
 class PowerWithCovariateTrend(Trend):
@@ -70,7 +70,7 @@ class PowerWithCovariateTrend(Trend):
         return np.power(t / np.exp(x[3] * c), x[2])
 
     def invFunc(self, x, z0, c=0):
-        return np.power(z0, 1 / x[2]) * np.exp(x[3] * c)
+        return np.power(z0/x[1], 1 / x[2]) * np.exp(x[3] * c)
 
     def _base(self, t, x, c=0):
         """Базовая функция f = t^gamma * exp(-beta*c*gamma)"""

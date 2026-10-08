@@ -3,7 +3,7 @@
 import numpy as np
 from .trends import LinearTrend, PowerTrend, LinearWithCovariateTrend, PowerWithCovariateTrend
 from .models import WienerModel
-
+import time as tm
 
 class DegradationDataGenerator:
     """Генератор данных деградационных процессов."""
@@ -32,20 +32,75 @@ class DegradationDataGenerator:
         return value, delta, times
 
     def get_values_limited(self, delta, time, z0):
-        """Получение значений деградации с ограничением порогом."""
         value = []
         times = []
+
         for i in range(len(delta)):
-            value.append([0])
-            times.append(time[i])
+            z = [0]
+            t = []
+            d = []
+
             for j in range(len(delta[i])):
-                if value[i][j] + delta[i][j] <= z0:
-                    value[i].append(value[i][j] + delta[i][j])
+
+                next_value = z[-1] + delta[i][j]
+
+                if next_value <= z0:
+                    z.append(next_value)
+                    t.append(time[i][j])
+                    d.append(delta[i][j])
                 else:
-                    times[i] = time[i][0:j + 1]
-                    delta[i] = delta[i][0:j + 1]
                     break
+
+            value.append(z)
+            delta[i] = d
+            times.append(t)
+
         return value, delta, times
+
+    def get_values_without_stop(self, delta, time, z0):
+        """
+        Исключение траекторий, достигших критического уровня z0.
+
+        Траектория сохраняется, только если все накопленные
+        значения деградации на сетке наблюдений <= z0.
+
+        Returns
+        -------
+        value : list
+            Накопленные значения деградации допустимых траекторий.
+        delta_filtered : list
+            Приращения допустимых траекторий.
+        times_filtered : list
+            Времена наблюдений допустимых траекторий.
+        """
+        value = []
+        delta_filtered = []
+        times_filtered = []
+
+        for i in range(len(delta)):
+            z = [0.0]
+            trajectory_valid = True
+
+            for j in range(len(delta[i])):
+                next_value = z[-1] + delta[i][j]
+
+                if next_value > z0:
+                    trajectory_valid = False
+                    break
+
+                z.append(next_value)
+
+            # Исключаем траекторию целиком
+            if not trajectory_valid:
+                continue
+
+            value.append(z)
+            delta_filtered.append(list(delta[i]))
+            times_filtered.append(list(time[i]))
+
+        #print(len(times_filtered))
+        #tm.sleep(1000)
+        return value, delta_filtered, times_filtered
 
     def generate_linear(self, M, x, z0, covariate, time):
         """Генерация данных для линейной модели."""
@@ -69,7 +124,7 @@ class DegradationDataGenerator:
         #    time.append(time)
 
         delta = [self.get_delta(time[i], x, covariate[i]) for i in range(M)]
-        value, delta, time = self.get_values_unlimited(delta, time, z0)
+        value, delta, time = self.get_values_without_stop(delta, time, z0)
         return [time, delta, value, covariate]
 
     def generate_power_with_covariate(self, M, x, z0,  covariate, time):

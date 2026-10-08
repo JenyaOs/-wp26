@@ -4,6 +4,7 @@ import random
 import numpy as np
 from scipy.optimize import minimize
 import mpmath
+import math
 
 
 class WienerModel:
@@ -79,58 +80,55 @@ class WienerModel:
         res = minimize(self.log_likelihood, x0, method='L-BFGS-B')
         return res.x
 
-
     def conditional_log_likelihood(self, x):
-        """Условная логарифмическая функция правдоподобия с ТОЧНОЙ формулой."""
-        self.set_params(x)
         z = self.z
         time = self.data[0]
         delta = self.data[1]
         covariates = self.data[3]
-        n = len(time)
 
         if x[0] <= 0 or x[1] <= 0:
-            return 1e+10
+            return 1e10
 
-        from scipy.stats import norm
+        self.set_params(x)
 
-        neg_log_lik = 0.0
+        total = 0.0
+        n = len(time)
 
         for i in range(n):
-            ro = self.f_ro(time[i][-1], covariates[i])
-            z_last = sum(delta[i])
 
-            # 1. Отрицательный логарифм плотности (безусловная часть)
-            neg_log_pdf = (
-                0.5 * np.log(2 * np.pi)
-                + np.log(x[0])
-                + 0.5 * np.log(ro)
-                + np.power(z_last - x[1] * ro, 2) / (2 * np.power(x[0], 2) * ro)
+            t = time[i][-1]
+            c = covariates[i]
+
+            ro = self.f_ro(t, c)
+
+            if ro <= 1e-12:
+                return 1e10
+
+            d = sum(delta[i])
+
+            mean = x[1] * ro
+            variance = x[0] ** 2 * ro
+
+            # Отрицательный логарифм нормальной плотности
+            total += (
+                    0.5 * np.log(2.0 * np.pi)
+                    + np.log(x[0])
+                    + 0.5 * np.log(ro)
+                    + (d - mean) ** 2 / (2.0 * variance)
             )
 
-            # 2. ТОЧНАЯ функция надёжности (Inverse Gaussian Survival Function)
-            # R(t) = Φ(C) - exp(2μz/σ²) · Φ(C2)
-            C = (z - x[1] * ro) / (x[0] * np.sqrt(ro))
-            C2 = (-z - x[1] * ro) / (x[0] * np.sqrt(ro))
+            # P(X(T) <= z0)
+            C = (z - mean) / (x[0] * np.sqrt(2.0 * ro))
 
-            exp_arg = 2 * x[1] * z / (x[0]**2)
-            if exp_arg > 700:  # Защита от переполнения
-                exp_term = np.exp(700)
-            else:
-                exp_term = np.exp(exp_arg)
+            F = 0.5 * (1.0 + math.erf(C))
 
-            term1 = norm.cdf(C)
-            term2 = exp_term * norm.cdf(C2)
+            if F <= 1e-12:
+                return 1e10
 
-            R = term1 - term2
-            R = max(R, 1e-300)  # Защита от log(0)
+            # Условная нормировка
+            total -= np.log(F)
 
-            log_R = np.log(R)
-
-            # 3. Условное правдоподобие: -log L_cond = -log PDF + log R
-            neg_log_lik += neg_log_pdf - log_R
-
-        return neg_log_lik
+        return total
 
     def estimate_conditional_parameters(self, x0, data):
         """Оценка условных параметров."""
